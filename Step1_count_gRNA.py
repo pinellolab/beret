@@ -188,7 +188,7 @@ def get_input_parser():
 
     #optional
     parser.add_argument('--guide_start', type = int, help = "Starting position of guide in R1", default = 24)
-    parser.add_argument('-r', '--count_reporter', type = bool, help = "Count reporter edits.", default = True)
+    parser.add_argument('-r', '--count_reporter', type = bool, help = "Count reporter edits.", default = False)
     parser.add_argument('-q','--min_average_read_quality', type=int, help='Minimum average quality score (phred33) to keep a read', default=0)
     parser.add_argument('-s','--min_single_bp_quality', type=int, help='Minimum single bp score (phred33) to keep a read', default=0)
     parser.add_argument('-n','--name',  help='Output name', default='')

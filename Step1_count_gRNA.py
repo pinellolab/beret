@@ -234,7 +234,7 @@ def check_arguments(args):
     if args.qend_R2 != args.guide_bc_len + args.reporter_length :
         warn("Quality of R2 checked up until {}bp, while the length of guide barcode and reporter combined is {}bp.".format(
             args.qend_R2, args.guide_bc_len + args.reporter_length))
-    
+    info("Using guide barcode length {}, guide start {}, and guide length {}".format(args.guide_bc_len, args.guide_start, ','.join(list(map(lambda x: str(x), GUIDE_LENGTHS))))) 
     #normalize name and remove not allowed characters
     if args.name:   
         clean_name=slugify(args.name)
@@ -372,15 +372,16 @@ def match_masked_sgRNA(masked_guides_dict: dict,
 
 
 def gRNA_eq(guide, observed, edit_start, edit_end):
+    if len(observed) != len(guide): return(False)
     for observed_nt, guide_nt in zip(observed, guide):
         if (observed_nt == guide_nt) or ((guide_nt, observed_nt) == (edit_start, edit_end)):
             continue
         else:
-            return False
-    return True 
+            return(False)
+    return(True)
 
 
-def match_sgRNA(guides_dict: Dict[str, str], query_seq: str, guide_bc = str, 
+def match_sgRNA(guides_dict: Dict[str, str], query_seq: str, guide_bc : str, 
     edit_start: str = "A", edit_end: str = "G") -> List[str]:
     '''
     Search across all the gRNAs to find the match
@@ -390,6 +391,7 @@ def match_sgRNA(guides_dict: Dict[str, str], query_seq: str, guide_bc = str,
     matches = []
     for ref_seq, (name, ref_barcode) in guides_dict.items():
         if gRNA_eq(ref_seq, query_seq, edit_start, edit_end) and ref_barcode == guide_bc: 
+#        if gRNA_eq(ref_seq, query_seq, edit_start, edit_end): 
             matches.append(name)
     return(matches)
 
@@ -432,6 +434,10 @@ def count_masked_guides(R1_filename, R2_filename,
         gRNA_names = []
         for guide_length in GUIDE_LENGTHS:
             gRNA_barcode = revcomp(R2_seq[:guide_bc_len])
+            if i == 100: 
+                print(gRNA_barcode)
+                print(R1_seq)
+                print(R2_seq)
             gRNA_seq = R1_seq[guide_start:guide_start + guide_length]
             gRNA_names.extend(match_sgRNA(guides_dict, gRNA_seq, gRNA_barcode))
 
@@ -439,8 +445,8 @@ def count_masked_guides(R1_filename, R2_filename,
             if write_nomatch:
                 outfile_R1_nomatch.write("{}\n{}\n+\n{}\n".format(t1, R1_seq, q1))
                 outfile_R2_nomatch.write("{}\n{}\n+\n{}\n".format(t2, R2_seq, q2))
-        elif len(gRNA_names) > 1: 
-            warn("{}th read with {} nonunique mapping. Discarding the read.".format(i, len(gRNA_names)))
+        elif len(gRNA_names) >= 2: 
+            warn("{}th read with {} nonunique mapping to {}. Discarding the read.".format(i, len(gRNA_names), ",".join(gRNA_names)))
             print("{}\n{}\n+\n{}\n".format(t1, R1_seq, q1))
             print("{}\n{}\n+\n{}\n".format(t2, R2_seq, q2))
         else:
@@ -470,7 +476,7 @@ def count_masked_guides(R1_filename, R2_filename,
                     gname_to_count[gRNA_name] += 1
                 else: 
                     gname_to_count[gRNA_name] = 1
-
+    print(gname_to_count)
     return(gname_to_count)
 
 
@@ -530,20 +536,20 @@ if __name__ == '__main__':
 
         if args.count_reporter: 
             guide_to_reporter = get_guide_to_reporter_dict(args.sgRNA_file)
-            gRNA_count = count_masked_guides(filtered_R1_filename, 
-                filtered_R2_filename, 
-                guides_dict, 
-                args.guide_start, 
-                args.guide_bc_len, 
+            gRNA_count = count_masked_guides(R1_filename = filtered_R1_filename, 
+                R2_filename = filtered_R2_filename, 
+                guides_dict = guides_dict, 
+                guide_start = args.guide_start, 
+                guide_bc_len = args.guide_bc_len, 
                 write_nomatch = True, 
                 count_reporter_edits = True, 
                 guide_to_reporter_dict = guide_to_reporter)
         else:
-            gRNA_count = count_masked_guides(filtered_R1_filename, 
-                filtered_R2_filename, 
-                masked_guides_dict, 
-                args.guide_start, 
-                args.guide_bc_len, 
+            gRNA_count = count_masked_guides(R1_filename = filtered_R1_filename, 
+                R2_filename = filtered_R2_filename, 
+                guides_dict = guides_dict, 
+                guide_start = args.guide_start, 
+                guide_bc_len = args.guide_bc_len, 
                 write_nomatch = True, 
                 count_reporter_edits = False, 
                 )
@@ -566,10 +572,10 @@ if __name__ == '__main__':
         else:
             df_guide_counts = pd.Series(gRNA_count, name = "read_counts").to_frame()
             df_guide_counts.index.name='guide_name'
-            df_guide_counts['read_%']=df_guide_counts['Read_Counts']/N_READS*100
-            df_guide_counts['RPM']=df_guide_counts['Read_Counts']/N_READS*1000000
-            df_guide_counts.sort_values(by='Read_Counts',ascending=False).to_csv(
-                _jp('readCount_guide_{}.txt'.format(database_id), sep='\t'))
+            df_guide_counts['read_%']=df_guide_counts['read_counts']/N_READS_AFTER_PREPROCESSING*100
+            df_guide_counts['RPM']=df_guide_counts['read_counts']/N_READS_AFTER_PREPROCESSING*1000000
+            df_guide_counts.sort_values(by='read_counts',ascending=False).to_csv(
+                _jp('readCount_guide_{}.txt'.format(database_id)), sep='\t')
         
         info('Done!')
         

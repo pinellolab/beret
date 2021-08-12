@@ -166,7 +166,7 @@ class NoReadsAfterQualityFiltering(Exception):
 def get_input_parser():
     """Get the input data"""
     print('  \n~~~CRISPRessoCount~~~')
-    print('-Utility to perform sgRNA enumeration from deep sequencing data-')
+    print('-Utility to perform sgRNA and reporter count from CRISPR base editors-')
     print(r'''
           )                                             )
          (           ________________________          (
@@ -177,7 +177,7 @@ def get_input_parser():
     ''')
     
     
-    print('\n[Luca Pinello 2017, send bugs, suggestions or *green coffee* to lucapinello AT gmail DOT com]\n\n')
+    print('\n[Luca Pinello 2017, Jayoung Ryu 2021, send bugs, suggestions or *green coffee* to jayoung_ryu AT g DOT harvard DOT edu]\n\n')
     
     
     parser = argparse.ArgumentParser(description='CRISPRessoCount parameters',formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -371,7 +371,7 @@ def match_masked_sgRNA(masked_guides_dict: dict,
     return(matches)
 
 
-def grna_eq(guide, observed, edit_start, edit_end):
+def gRNA_eq(guide, observed, edit_start, edit_end):
     for observed_nt, guide_nt in zip(observed, guide):
         if (observed_nt == guide_nt) or ((guide_nt, observed_nt) == (edit_start, edit_end)):
             continue
@@ -389,7 +389,7 @@ def match_sgRNA(guides_dict: Dict[str, str], query_seq: str, guide_bc = str,
     # TBD: condition check for edit_start, end
     matches = []
     for ref_seq, (name, ref_barcode) in guides_dict.items():
-        if grna_eq(ref, query, edit_start, edit_end) and ref_barcode == guide_bc: 
+        if gRNA_eq(ref_seq, query_seq, edit_start, edit_end) and ref_barcode == guide_bc: 
             matches.append(name)
     return(matches)
 
@@ -426,7 +426,7 @@ def count_masked_guides(R1_filename, R2_filename,
 
     gname_to_count = dict()
 
-    for r1, r2 in zip(iterator_R1, iterator_R2):
+    for i, (r1, r2) in enumerate(zip(iterator_R1, iterator_R2)):
         t1, R1_seq, q1 = r1
         t2, R2_seq, q2 = r2
         gRNA_names = []
@@ -439,7 +439,10 @@ def count_masked_guides(R1_filename, R2_filename,
             if write_nomatch:
                 outfile_R1_nomatch.write("{}\n{}\n+\n{}\n".format(t1, R1_seq, q1))
                 outfile_R2_nomatch.write("{}\n{}\n+\n{}\n".format(t2, R2_seq, q2))
-        elif len(gRNA_names) > 1: warn("{}th read with {} nonunique mapping. Discarding the read.".format(i, len(gRNA_names)))
+        elif len(gRNA_names) > 1: 
+            warn("{}th read with {} nonunique mapping. Discarding the read.".format(i, len(gRNA_names)))
+            print("{}\n{}\n+\n{}\n".format(t1, R1_seq, q1))
+            print("{}\n{}\n+\n{}\n".format(t2, R2_seq, q2))
         else:
             # unique match
             gRNA_name = gRNA_names[0]
@@ -523,13 +526,13 @@ if __name__ == '__main__':
         else:
             info('Number of reads in input:%d\tNumber of reads after filtering:%d\n' % (N_READS_INPUT, N_READS_AFTER_PREPROCESSING))
  
-        guides_dict = get_sgRNA_dict_simple(args.sgRNA_file, args.edited_base)
+        guides_dict = get_sgRNA_dict_simple(args.sgRNA_file)
 
         if args.count_reporter: 
             guide_to_reporter = get_guide_to_reporter_dict(args.sgRNA_file)
             gRNA_count = count_masked_guides(filtered_R1_filename, 
                 filtered_R2_filename, 
-                masked_guides_dict, 
+                guides_dict, 
                 args.guide_start, 
                 args.guide_bc_len, 
                 write_nomatch = True, 

@@ -538,6 +538,15 @@ if __name__ == '__main__':
                 write_nomatch = True, 
                 count_reporter_edits = True, 
                 guide_to_reporter_dict = guide_to_reporter)
+        else:
+            gRNA_count = count_masked_guides(filtered_R1_filename, 
+                filtered_R2_filename, 
+                masked_guides_dict, 
+                args.guide_start, 
+                args.guide_bc_len, 
+                write_nomatch = True, 
+                count_reporter_edits = False, 
+                )
 
         info('Done!')    
 
@@ -552,7 +561,7 @@ if __name__ == '__main__':
                 columns = ["name", "pos", "ref_base", "sample_base", "count"]
             )
             df_guide_counts.sort_values(by = "count").to_csv(
-                _jp('readCount_guide_{}.txt'.format(database_id)), sep='\t')
+                _jp('readCount_edit_{}.txt'.format(database_id)), sep='\t')
 
         else:
             df_guide_counts = pd.Series(gRNA_count, name = "read_counts").to_frame()
@@ -560,7 +569,7 @@ if __name__ == '__main__':
             df_guide_counts['read_%']=df_guide_counts['Read_Counts']/N_READS*100
             df_guide_counts['RPM']=df_guide_counts['Read_Counts']/N_READS*1000000
             df_guide_counts.sort_values(by='Read_Counts',ascending=False).to_csv(
-                _jp('readCount_edit_{}.txt'.format(database_id), sep='\t'))
+                _jp('readCount_guide_{}.txt'.format(database_id), sep='\t'))
         
         info('Done!')
         

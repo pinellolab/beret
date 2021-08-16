@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+from os import path
 import gzip
 import argparse
 import sys
@@ -14,7 +15,8 @@ import numpy as np
 from Bio import SeqIO
 from Bio.SeqIO.QualityIO import FastqGeneralIterator
 from Bio.Seq import Seq
-from typing import Dict, List, Union
+from typing import Dict, List, Union, Tuple
+from tqdm import tqdm 
 
 import logging
 logging.basicConfig(level=logging.INFO,
@@ -147,8 +149,9 @@ def mask_sequence_positions(seq: str, pos: np.array) -> str:
     return("".join([seq[i] if i in pos else "N" for i in range(len(seq))]))
 
 
-def revcomp(seq: str) -> str:
-    seq = Seq(seq)
+def revcomp(seq: Union[Seq, str]) -> str:
+    if isinstance(seq, str): 
+        seq = Seq(seq)
     return(str(seq.reverse_complement()))
 
 
@@ -188,7 +191,7 @@ def get_input_parser():
 
     #optional
     parser.add_argument('--guide_start', type = int, help = "Starting position of guide in R1", default = 24)
-    parser.add_argument('-r', '--count_reporter', type = bool, help = "Count reporter edits.", default = False)
+    parser.add_argument('-r', '--count_reporter', help = "Count reporter edits.", action = 'store_true')
     parser.add_argument('-q','--min_average_read_quality', type=int, help='Minimum average quality score (phred33) to keep a read', default=0)
     parser.add_argument('-s','--min_single_bp_quality', type=int, help='Minimum single bp score (phred33) to keep a read', default=0)
     parser.add_argument('-n','--name',  help='Output name', default='')
@@ -200,6 +203,8 @@ def get_input_parser():
     parser.add_argument('--qstart_R2', help = 'Same as qstart_R1, for read 2 fastq file', default = 0)
     parser.add_argument('--qend_R2', help = 'Same as qstart_R2, for read 2 fastq file', default = 36)
     parser.add_argument('--guide_bc_len', help = 'Guide barcode sequence length at the beginning of the R2', type = str, default = 4)
+    parser.add_argument('--offset', help = 'Guide file has offest column that will be added to the relative position of reporters.', action = 'store_true')
+    parser.add_argument('--align_fasta', help = 'gRNA is aligned to this sequence to infer the offset. Can be used when the exact offset is not provided.', type = str, default = '')
 
     return(parser)
 
@@ -241,6 +246,14 @@ def check_arguments(args):
         if args.name!= clean_name:
                warn('The specified name %s contained characters not allowed and was changed to: %s' % (args.name,clean_name))
                args.name=clean_name
+
+    if args.offset:
+        df = pd.read_csv(args.sgRNA_file)
+        if not 'offset' in df.columns:
+            raise InputFileError("Offset option is set but the input file doesn't contain the offset column.")
+        if len(args.align_fasta) > 0:
+            error("Can't have --offset and --align_fasta option together.")
+
     info("Done checking input arguments.")
 
     return(args)
@@ -326,7 +339,7 @@ def get_sgRNA_dict(sgRNA_filename: str, edited_base: str) -> Dict[str, Dict[np.a
 
 def get_sgRNA_dict_simple(sgRNA_filename):
     seq_to_name = dict()
-
+    # TBD: change this into dataframe
     with open(sgRNA_filename) as infile:
         sgRNA_df = pd.read_csv(infile)
         if not ('name' in sgRNA_df.columns and 'gRNA_barcode' in sgRNA_df.columns and 'gRNA' in sgRNA_df.columns):
@@ -336,15 +349,17 @@ def get_sgRNA_dict_simple(sgRNA_filename):
     return(seq_to_name)
 
 
-def get_guide_to_reporter_dict(sgRNA_filename: str) -> Dict[str, str]:
+def get_guide_info(sgRNA_filename: str) -> pd.DataFrame:
     '''Returns a gRNA name to reporter sequence mapping.'''
     guide_to_reporter = {}
+
     with open(sgRNA_filename) as infile:
         sgRNA_df = pd.read_csv(infile)
         if not ('name' in sgRNA_df.columns and 'Reporter' in sgRNA_df.columns):
             raise InputFileError("Input gRNA file doesn't have the column 'gRNA' or 'gRNA_barcode'.")
-        return(sgRNA_df[["name", "Reporter"]].set_index('name').to_dict())
-
+        sgRNA_df.set_index('name', inplace = True)
+        return(sgRNA_df)    
+    
 
 def match_masked_sgRNA(masked_guides_dict: dict, 
     gRNA_seq: str, 
@@ -390,7 +405,7 @@ def match_sgRNA(guides_dict: Dict[str, str], query_seq: str, guide_bc : str,
     # TBD: condition check for edit_start, end
     matches = []
     for ref_seq, (name, ref_barcode) in guides_dict.items():
-        if gRNA_eq(ref_seq, query_seq, edit_start, edit_end) and ref_barcode == guide_bc: 
+        if ref_barcode == guide_bc and gRNA_eq(ref_seq, query_seq, edit_start, edit_end) : 
 #        if gRNA_eq(ref_seq, query_seq, edit_start, edit_end): 
             matches.append(name)
     return(matches)
@@ -402,7 +417,7 @@ def count_masked_guides(R1_filename, R2_filename,
     guide_bc_len: int, 
     write_nomatch: bool = False, 
     count_reporter_edits: bool = False, 
-    guide_to_reporter_dict: dict = None) -> Union[Dict[str, int], Dict[str, Dict[tuple, int]]]:
+    guide_info_df: pd.DataFrame = None) -> Union[Dict[str, int], Dict[str, Dict[tuple, int]]]:
     '''
     Given a read pair, find matches among gRNA and optionally find the reporter edits.
     Returns a dictionary of (guide name -> count) if count_reporter_edits = False.
@@ -419,7 +434,7 @@ def count_masked_guides(R1_filename, R2_filename,
         outfile_R2_nomatch = open(nomatch_R2_filename, "w")
 
     if count_reporter_edits:
-        assert not guide_to_reporter_dict is None, "No guide to reporter dictionary passed onto count_masked_guides."
+        assert not guide_info_df is None, "No guide to reporter dictionary passed onto count_masked_guides."
 
     info('Counting sgRNAs...')
     
@@ -428,16 +443,12 @@ def count_masked_guides(R1_filename, R2_filename,
 
     gname_to_count = dict()
 
-    for i, (r1, r2) in enumerate(zip(iterator_R1, iterator_R2)):
+    for i, (r1, r2) in tqdm(enumerate(zip(iterator_R1, iterator_R2)), total = N_READS_AFTER_PREPROCESSING):
         t1, R1_seq, q1 = r1
         t2, R2_seq, q2 = r2
         gRNA_names = []
         for guide_length in GUIDE_LENGTHS:
             gRNA_barcode = revcomp(R2_seq[:guide_bc_len])
-            if i == 100: 
-                print(gRNA_barcode)
-                print(R1_seq)
-                print(R2_seq)
             gRNA_seq = R1_seq[guide_start:guide_start + guide_length]
             gRNA_names.extend(match_sgRNA(guides_dict, gRNA_seq, gRNA_barcode))
 
@@ -458,12 +469,33 @@ def count_masked_guides(R1_filename, R2_filename,
                     reporter_edit_counts = gname_to_count[gRNA_name]
                 else: 
                     reporter_edit_counts = dict()
-                reporter_ref = guide_to_reporter_dict[gRNA_name]
+                
+                reporter_ref = guide_info_df.loc[gRNA_name].Reporter
                 reporter_seq = revcomp(R2_seq[guide_bc_len:guide_bc_len + REPORTER_LENGTH])
+                
+                if args.offset :
+                    offset = guide_info_df.loc[gRNA_name].offset
+                
+                elif len(args.align_fasta) > 0 :
+                    try:
+                        gene_seq = next(SeqIO.parse(args.align_fasta, "fasta")).seq.upper()
+                        #warn("Treating the first entry of the file as the align reference")
+                    except:
+                        raise InputFileError("Please check the gene sequence fasta file.")
+                    
+                    guide_info_df["pos_gRNA_seq"] = guide_info_df.gRNA
+                    if "Strand" in guide_info_df.columns:
+                        guide_info_df.pos_gRNA_seq.loc[(guide_info_df.Strand == "neg") | (guide_info_df.Strand == '-')] = guide_info_df.pos_gRNA_seq.loc[guide_info_df.Strand == "neg"].apply(revcomp)
+                    offset = gene_seq.find(guide_info_df.pos_gRNA_seq.loc[gRNA_name])
+                
+                # Check if gRNA can be mapped to multiple locations of the gene sequence
+                    if gene_seq.count(guide_info_df.loc[gRNA_name].pos_gRNA_seq) > 1:
+                        warn("gRNA {} can be mapped to multiple region. Using the first mapped position {}. The provided position is {}.".format(gRNA_name, offset, guide_info_df.loc[gRNA_name].pos))
+                    
                 for i, (ref_nt, sample_nt) in enumerate(zip(reporter_ref, reporter_seq)):
                     if ref_nt == sample_nt: continue
                     else: 
-                        edit = (i, ref_nt, sample_nt)
+                        edit = (i + offset, ref_nt, sample_nt)
                         if edit in reporter_edit_counts.keys():
                             reporter_edit_counts[edit] += 1
                         else: 
@@ -476,7 +508,9 @@ def count_masked_guides(R1_filename, R2_filename,
                     gname_to_count[gRNA_name] += 1
                 else: 
                     gname_to_count[gRNA_name] = 1
-    print(gname_to_count)
+
+    if not gname_to_count:
+        error("No reads assigned to gRNA. check the input.")
     return(gname_to_count)
 
 
@@ -513,15 +547,20 @@ if __name__ == '__main__':
 
         # Check read name is aligned to be the same in R1 and R2 files.
         # Optionally filter the reads based on the base quality
-
-        filtered_R1_filename, filtered_R2_filename = check_read_names_and_filter_quality(args.R1,
-            args.R2, 
-            output_R1_filename=_jp(os.path.basename(args.R1).replace('.fastq','').replace('.gz','')+'_filtered.fastq.gz'),
-            output_R2_filename=_jp(os.path.basename(args.R2).replace('.fastq','').replace('.gz','')+'_filtered.fastq.gz'),
-            min_bp_quality=args.min_average_read_quality,
-            min_single_bp_quality=args.min_single_bp_quality, 
-            qend_R1 = args.qend_R1, 
-            qend_R2 = args.qend_R2)
+        
+        filtered_R1_filename = _jp(os.path.basename(args.R1).replace('.fastq','').replace('.gz','')+'_filtered.fastq.gz')
+        filtered_R2_filename = _jp(os.path.basename(args.R2).replace('.fastq','').replace('.gz','')+'_filtered.fastq.gz')
+        if path.exists(filtered_R1_filename) and path.exists(filtered_R2_filename):
+            warn("Using preexisting filtered file")
+        else:
+            filtered_R1_filename, filtered_R2_filename = check_read_names_and_filter_quality(args.R1,
+                args.R2, 
+                output_R1_filename= filtered_R1_filename,
+                output_R2_filename= filtered_R2_filename,
+                min_bp_quality=args.min_average_read_quality,
+                min_single_bp_quality=args.min_single_bp_quality, 
+                qend_R1 = args.qend_R1, 
+                qend_R2 = args.qend_R2)
 
         info('Done!')
         
@@ -535,7 +574,7 @@ if __name__ == '__main__':
         guides_dict = get_sgRNA_dict_simple(args.sgRNA_file)
 
         if args.count_reporter: 
-            guide_to_reporter = get_guide_to_reporter_dict(args.sgRNA_file)
+            guide_to_reporter = get_guide_info(args.sgRNA_file)
             gRNA_count = count_masked_guides(R1_filename = filtered_R1_filename, 
                 R2_filename = filtered_R2_filename, 
                 guides_dict = guides_dict, 
@@ -543,7 +582,7 @@ if __name__ == '__main__':
                 guide_bc_len = args.guide_bc_len, 
                 write_nomatch = True, 
                 count_reporter_edits = True, 
-                guide_to_reporter_dict = guide_to_reporter)
+                guide_info_df = guide_to_reporter)
         else:
             gRNA_count = count_masked_guides(R1_filename = filtered_R1_filename, 
                 R2_filename = filtered_R2_filename, 

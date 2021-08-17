@@ -190,7 +190,7 @@ def get_input_parser():
     parser.add_argument('-f','--sgRNA_file', type=str, required = True, help='''sgRNA description file. The format requires three columns: gRNA, Reporter, gRNA_barcode.''')
 
     #optional
-    parser.add_argument('--guide_start', type = int, help = "Starting position of guide in R1", default = 24)
+    parser.add_argument('--guide_start', type = str, help = "Guide starts after this sequence in R1", default = "GGAAAGGACGAAACACCG")
     parser.add_argument('-r', '--count_reporter', help = "Count reporter edits.", action = 'store_true')
     parser.add_argument('-q','--min_average_read_quality', type=int, help='Minimum average quality score (phred33) to keep a read', default=0)
     parser.add_argument('-s','--min_single_bp_quality', type=int, help='Minimum single bp score (phred33) to keep a read', default=0)
@@ -227,9 +227,8 @@ def check_arguments(args):
     read_length = get_first_read_length(args.R1)
 
     # Check if positions of guide and quality control is valid
-    if not (args.guide_start >= 0 and args.guide_start + max(GUIDE_LENGTHS) < read_length): 
-        raise ValueError("The guide start and end position is not valid. Start position should be nonnegative integer ({} provided), and the ending position should be shorter than the read length {} ({} provided)".format(args.guide_start, read_length, args.guide_start + max(GUIDE_LENGTHS)))
-    
+    NotImplemented
+
     if not (args.qstart_R1 < read_length and args.qstart_R2 < read_length):
         raise ValueError("The start position of base quality filter is not nonnegative ({} for R1, {} for R2 provided)".format(args.qstart_R1, args.qstart_R2))
     
@@ -413,7 +412,7 @@ def match_sgRNA(guides_dict: Dict[str, str], query_seq: str, guide_bc : str,
 
 def count_masked_guides(R1_filename, R2_filename, 
     guides_dict: Dict[str, str], 
-    guide_start: int, 
+    guide_start: str, 
     guide_bc_len: int, 
     write_nomatch: bool = False, 
     count_reporter_edits: bool = False, 
@@ -444,12 +443,16 @@ def count_masked_guides(R1_filename, R2_filename,
     gname_to_count = dict()
 
     for i, (r1, r2) in tqdm(enumerate(zip(iterator_R1, iterator_R2)), total = N_READS_AFTER_PREPROCESSING):
+#    for i, (r1, r2) in enumerate(zip(iterator_R1, iterator_R2)):
         t1, R1_seq, q1 = r1
         t2, R2_seq, q2 = r2
         gRNA_names = []
         for guide_length in GUIDE_LENGTHS:
             gRNA_barcode = revcomp(R2_seq[:guide_bc_len])
-            gRNA_seq = R1_seq[guide_start:guide_start + guide_length]
+            guide_start_idx = R1_seq.find(guide_start)
+            if guide_start_idx == -1 : continue
+            guide_start_idx = guide_start_idx + len(guide_start)
+            gRNA_seq = R1_seq[guide_start_idx:guide_start_idx + guide_length]
             gRNA_names.extend(match_sgRNA(guides_dict, gRNA_seq, gRNA_barcode))
 
         if len(gRNA_names) == 0: 
@@ -491,6 +494,7 @@ def count_masked_guides(R1_filename, R2_filename,
                 # Check if gRNA can be mapped to multiple locations of the gene sequence
                     if gene_seq.count(guide_info_df.loc[gRNA_name].pos_gRNA_seq) > 1:
                         warn("gRNA {} can be mapped to multiple region. Using the first mapped position {}. The provided position is {}.".format(gRNA_name, offset, guide_info_df.loc[gRNA_name].pos))
+                        #exit(1)
                     
                 for i, (ref_nt, sample_nt) in enumerate(zip(reporter_ref, reporter_seq)):
                     if ref_nt == sample_nt: continue
@@ -534,15 +538,15 @@ if __name__ == '__main__':
         
         
         try:
-             os.makedirs(OUTPUT_DIRECTORY)
-             logging.getLogger().addHandler(logging.FileHandler(log_filename))
-    
-             with open(log_filename,'w+') as outfile:
-                 outfile.write('[Command used]:\nCRISPRessoCount %s\n\n[Execution log]:\n' % ' '.join(sys.argv))
-             info('Creating Folder %s' % OUTPUT_DIRECTORY)
-             info('Done!')
+            os.makedirs(OUTPUT_DIRECTORY)
+            info('Creating Folder %s' % OUTPUT_DIRECTORY)
         except:
-                 warn('Folder %s already exists.' % OUTPUT_DIRECTORY)
+            warn('Folder %s already exists.' % OUTPUT_DIRECTORY)
+        
+        logging.getLogger().addHandler(logging.FileHandler(log_filename))
+        with open(log_filename,'w+') as outfile:
+            outfile.write('[Command used]:\nCRISPRessoCount %s\n\n[Execution log]:\n' % ' '.join(sys.argv))
+        info('Done!')
 
 
         # Check read name is aligned to be the same in R1 and R2 files.

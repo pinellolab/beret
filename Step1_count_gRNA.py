@@ -609,8 +609,8 @@ if __name__ == '__main__':
                 ],
                 columns = ["name", "pos", "ref_base", "sample_base", "count"]
             )
-            df_guide_counts.sort_values(by = "count").to_csv(
-                _jp('readCount_edit_{}.txt'.format(database_id)), sep='\t')
+            df_guide_counts.sort_values(by = "count", ascending = False).to_csv(
+                _jp('readCount_edit_{}.txt'.format(database_id)), sep='\t', index = False)
 
         else:
             df_guide_counts = pd.Series(gRNA_count, name = "read_counts").to_frame()

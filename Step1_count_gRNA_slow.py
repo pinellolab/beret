@@ -473,6 +473,7 @@ def count_masked_guides(R1_filename, R2_filename,
                 elif len(gRNA_match_wo_barcode) == 1:
                     outfile_R1_semimatch.write("{}\n{}\n+\n{}\n".format(t1, R1_seq, q1))
                     outfile_R2_semimatch.write("{}\n{}\n+\n{}\n".format(t2, R2_seq, q2))
+                    gRNA_name = gRNA_match_wo_barcode[0]
                     if gRNA_name in gname_to_count.keys(): 
                         gname_to_count[gRNA_name] += 1
                     else: 

@@ -503,7 +503,7 @@ def count_masked_guides(R1_filename, R2_filename,
                     if ref_nt == sample_nt: continue
                     if ord(reporter_seq_qual[i]) - 33 <= EDIT_QUAL_CUTOFF : continue 
                     else: 
-                        edit = (i + offset, ref_nt, sample_nt)
+                        edit = (i, i + offset, ref_nt, sample_nt)
                         if edit in reporter_edit_counts.keys():
                             reporter_edit_counts[edit] += 1
                         else: 
@@ -610,11 +610,11 @@ if __name__ == '__main__':
 
         if args.count_reporter:
             df_guide_counts = pd.DataFrame.from_records(
-                [(name, pos, ref_base, sample_base, count)
+                [(name, pos, offset_pos, ref_base, sample_base, count)
                 for name, edit_to_count in gRNA_count.items()
-                for (pos, ref_base, sample_base), count in edit_to_count.items() 
+                for (pos, offset_pos, ref_base, sample_base), count in edit_to_count.items() 
                 ],
-                columns = ["name", "pos", "ref_base", "sample_base", "count"]
+                columns = ["name", "pos", "offset_pos", "ref_base", "sample_base", "count"]
             )
             df_guide_counts.sort_values(by = "count", ascending = False).to_csv(
                 _jp('readCount_edit_{}.txt'.format(database_id)), sep='\t', index = False)
@@ -662,7 +662,3 @@ if __name__ == '__main__':
 #        error('\n\nERROR: %s' % e)
 #        sys.exit(-1)
 
-                if gRNA_name in gname_to_count.keys(): 
-                    gname_to_count[gRNA_name] += 1
-                else: 
-                    gname_to_count[gRNA_name] = 1

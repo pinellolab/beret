@@ -475,6 +475,7 @@ def count_masked_guides(R1_filename, R2_filename,
                 
                 reporter_ref = guide_info_df.loc[gRNA_name].Reporter
                 reporter_seq = revcomp(R2_seq[guide_bc_len:guide_bc_len + REPORTER_LENGTH])
+                reporter_seq_qual = q2[guide_bc_len:guide_bc_len + REPORTER_LENGTH][::-1]
                 
                 if args.offset :
                     offset = guide_info_df.loc[gRNA_name].offset
@@ -487,6 +488,7 @@ def count_masked_guides(R1_filename, R2_filename,
                         raise InputFileError("Please check the gene sequence fasta file.")
                     
                     guide_info_df["pos_gRNA_seq"] = guide_info_df.gRNA
+
                     if "Strand" in guide_info_df.columns:
                         guide_info_df.pos_gRNA_seq.loc[(guide_info_df.Strand == "neg") | (guide_info_df.Strand == '-')] = guide_info_df.pos_gRNA_seq.loc[guide_info_df.Strand == "neg"].apply(revcomp)
                     offset = gene_seq.find(guide_info_df.pos_gRNA_seq.loc[gRNA_name])
@@ -497,7 +499,9 @@ def count_masked_guides(R1_filename, R2_filename,
                         #exit(1)
                     
                 for i, (ref_nt, sample_nt) in enumerate(zip(reporter_ref, reporter_seq)):
+                    if i < EDIT_START_POS or i >= EDIT_END_POS: continue
                     if ref_nt == sample_nt: continue
+                    if ord(reporter_seq_qual[i]) - 33 <= EDIT_QUAL_CUTOFF : continue 
                     else: 
                         edit = (i + offset, ref_nt, sample_nt)
                         if edit in reporter_edit_counts.keys():
@@ -521,6 +525,9 @@ def count_masked_guides(R1_filename, R2_filename,
 if __name__ == '__main__':
         REPORTER_LENGTH = 32
         GUIDE_LENGTHS = [19, 20]
+        EDIT_QUAL_CUTOFF = 30
+        EDIT_START_POS = 1
+        EDIT_END_POS = 12
 #    try:
         parser = get_input_parser()
         args = parser.parse_args()
@@ -655,3 +662,7 @@ if __name__ == '__main__':
 #        error('\n\nERROR: %s' % e)
 #        sys.exit(-1)
 
+                if gRNA_name in gname_to_count.keys(): 
+                    gname_to_count[gRNA_name] += 1
+                else: 
+                    gname_to_count[gRNA_name] = 1

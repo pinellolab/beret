@@ -204,7 +204,6 @@ def get_input_parser():
     parser.add_argument('--qend_R2', help = 'Same as qstart_R2, for read 2 fastq file', default = 36)
     parser.add_argument('--guide_bc_len', help = 'Guide barcode sequence length at the beginning of the R2', type = str, default = 4)
     parser.add_argument('--offset', help = 'Guide file has offest column that will be added to the relative position of reporters.', action = 'store_true')
-    parser.add_argument('--align_fasta', help = 'gRNA is aligned to this sequence to infer the offset. Can be used when the exact offset is not provided.', type = str, default = '')
 
     return(parser)
 
@@ -479,36 +478,38 @@ def count_masked_guides(R1_filename, R2_filename,
                 
                 if args.offset :
                     offset = guide_info_df.loc[gRNA_name].offset
-                
-                elif len(args.align_fasta) > 0 :
-                    try:
-                        gene_seq = next(SeqIO.parse(args.align_fasta, "fasta")).seq.upper()
-                        #warn("Treating the first entry of the file as the align reference")
-                    except:
-                        raise InputFileError("Please check the gene sequence fasta file.")
-                    
-                    guide_info_df["pos_gRNA_seq"] = guide_info_df.gRNA
-
-                    if "Strand" in guide_info_df.columns:
-                        guide_info_df.pos_gRNA_seq.loc[(guide_info_df.Strand == "neg") | (guide_info_df.Strand == '-')] = guide_info_df.pos_gRNA_seq.loc[guide_info_df.Strand == "neg"].apply(revcomp)
-                    offset = gene_seq.find(guide_info_df.pos_gRNA_seq.loc[gRNA_name])
-                
-                # Check if gRNA can be mapped to multiple locations of the gene sequence
-                    if gene_seq.count(guide_info_df.loc[gRNA_name].pos_gRNA_seq) > 1:
-                        warn("gRNA {} can be mapped to multiple region. Using the first mapped position {}. The provided position is {}.".format(gRNA_name, offset, guide_info_df.loc[gRNA_name].pos))
-                        #exit(1)
-                    
-                for i, (ref_nt, sample_nt) in enumerate(zip(reporter_ref, reporter_seq)):
-                    if i < EDIT_START_POS or i >= EDIT_END_POS: continue
-                    if ref_nt == sample_nt: continue
-                    if ord(reporter_seq_qual[i]) - 33 <= EDIT_QUAL_CUTOFF : continue 
-                    else: 
-                        edit = (i, i + offset, ref_nt, sample_nt)
-                        if edit in reporter_edit_counts.keys():
-                            reporter_edit_counts[edit] += 1
+                    for i, (ref_nt, sample_nt) in enumerate(zip(reporter_ref, reporter_seq)):
+                        if i < EDIT_START_POS + REPORTER_FLANK_LEN or i >= EDIT_END_POS + REPORTER_FLANK_LEN: continue
+                        if ref_nt == sample_nt: continue
+                        if ord(reporter_seq_qual[i]) - 33 <= EDIT_QUAL_CUTOFF : continue 
                         else: 
-                            reporter_edit_counts[edit] = 1
-                gname_to_count[gRNA_name] = reporter_edit_counts
+                            edit = (i - REPORTER_FLANK_LEN, i + offset, ref_nt, sample_nt)
+                            if edit in reporter_edit_counts.keys():
+                                reporter_edit_counts[edit] += 1
+                            else: 
+                                reporter_edit_counts[edit] = 1
+                    gname_to_count[gRNA_name] = reporter_edit_counts
+
+                
+                elif "Strand" in guide_info_df.columns :
+                    if guide_info_df.Strand == "neg":
+                        get_edit_position = get_edit_position_neg
+                    elif guide_info_df.Strand = "pos":
+                        get_edit_position = get_edit_position_neg
+                    else:
+                        get_edit_position = lambda i: return np.nan
+
+                    for i, (ref_nt, sample_nt) in enumerate(zip(reporter_ref, reporter_seq)):
+                        if i < EDIT_START_POS + REPORTER_FLANK_LEN or i >= EDIT_END_POS + REPORTER_FLANK_LEN: continue
+                        if ref_nt == sample_nt: continue
+                        if ord(reporter_seq_qual[i]) - 33 <= EDIT_QUAL_CUTOFF : continue 
+                        else: 
+                            edit = (i - REPORTER_FLANK_LEN, get_edit_position(i), ref_nt, sample_nt)
+                            if edit in reporter_edit_counts.keys():
+                                reporter_edit_counts[edit] += 1
+                            else: 
+                                reporter_edit_counts[edit] = 1
+                    gname_to_count[gRNA_name] = reporter_edit_counts
 
             else:
                 # Only count the gRNA counts
@@ -528,6 +529,7 @@ if __name__ == '__main__':
         EDIT_QUAL_CUTOFF = 30
         EDIT_START_POS = 1
         EDIT_END_POS = 12
+        REPORTER_FLANK_LEN = 6
 #    try:
         parser = get_input_parser()
         args = parser.parse_args()

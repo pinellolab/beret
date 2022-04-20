@@ -303,9 +303,9 @@ class GuideEditCounter:
             offset = -(self.screen.guides["Target base position in reporter"][matched_guide_idx] -1)
             # TODO: clean this up
         
-        allele= read_reporter_seq
-
-        if allele.edits:
+        allele = read_reporter_seq
+        print(allele)
+        if True:
             if self.count_edited_alleles:
                 if matched_guide_idx in self.guide_to_allele.keys():
                     if allele in self.guide_to_allele[matched_guide_idx].keys():

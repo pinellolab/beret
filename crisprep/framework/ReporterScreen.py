@@ -60,17 +60,17 @@ class ReporterScreen(Screen):
             self.layers["edits"] = X_edit
         if not X_bcmatch is None:
             self.layers["X_bcmatch"] = X_bcmatch
-        if "edit_counts" in self.uns.keys():
-            if "edit" in self.uns["edit_counts"].columns:
-                self.uns["edit_counts"].edit = self.uns["edit_counts"].edit.map(lambda s: Edit.from_str(s))
-        if "allele_counts" in self.uns.keys():
-            if "allele" in self.uns["allele_counts"].columns:
-                self.uns["allele_counts"].allele = self.uns["allele_counts"].allele.map(lambda s: Allele.from_str(s))
-        if "guide_reporter_allele_counts" in self.uns.keys():
-            self.uns["guide_reporter_allele_counts"].reporter_allele = \
-                self.uns["guide_reporter_allele_counts"].reporter_allele.map(lambda s: Allele.from_str(s))            
-            self.uns["guide_reporter_allele_counts"].guide_allele = \
-                self.uns["guide_reporter_allele_counts"].guide_allele.map(lambda s: Allele.from_str(s))
+        # if "edit_counts" in self.uns.keys():
+        #     if "edit" in self.uns["edit_counts"].columns:
+        #         self.uns["edit_counts"].edit = self.uns["edit_counts"].edit.map(lambda s: Edit.from_str(s))
+        # if "allele_counts" in self.uns.keys():
+        #     if "allele" in self.uns["allele_counts"].columns:
+        #         self.uns["allele_counts"].allele = self.uns["allele_counts"].allele.map(lambda s: Allele.from_str(s))
+        # if "guide_reporter_allele_counts" in self.uns.keys():
+        #     self.uns["guide_reporter_allele_counts"].reporter_allele = \
+        #         self.uns["guide_reporter_allele_counts"].reporter_allele.map(lambda s: Allele.from_str(s))            
+        #     self.uns["guide_reporter_allele_counts"].guide_allele = \
+        #         self.uns["guide_reporter_allele_counts"].guide_allele.map(lambda s: Allele.from_str(s))
         
     @classmethod
     def from_file_paths(
@@ -338,11 +338,11 @@ class ReporterScreen(Screen):
         return(allele_count_df)
         
 
-    def collapse_allele_by_target(self, ref_base, alt_base, target_pos_column = "target_pos"):
-        if not target_pos_column in self.guides.columns:
+    def collapse_allele_by_target(self, ref_base, alt_base, rel_target_pos_column = "target_pos"):
+        if not rel_target_pos_column in self.guides.columns:
             raise ValueError("The .guides have to have 'target_pos' specifying the relative position of target edit.")
-        df = self.uns["allele_counts"].copy()
-        df["target_pos"] = self.guides.set_index("name").loc[df.guide, target_pos_column].reset_index(drop=True)
+        df = self.uns["allele_counts"].copy().reset_index(drop=True)
+        df["target_pos"] = self.guides.set_index("name").loc[df.guide, rel_target_pos_column].reset_index(drop=True)
         df["has_target"] = df.apply(lambda row: row.allele.has_edit(ref_base, alt_base, rel_pos = row.target_pos), axis = 1)
         df["has_nontarget"] = df.apply(lambda row: row.allele.has_other_edit(ref_base, alt_base, rel_pos = row.target_pos), axis = 1)
         df = df.drop("target_pos", axis=1)
@@ -351,6 +351,7 @@ class ReporterScreen(Screen):
 
 
     def translate_alleles(self):
+        
         if self.uns["allele_counts"] is None:
             print("No allele information. Run crisrpep-count with -a option.")
             return
@@ -421,17 +422,17 @@ class ReporterScreen(Screen):
     ):
         pass
 
-    def write(self, out_path):
-        """
-        Write .h5ad
-        """
-        adata = self.copy()
-        for k in adata.uns.keys():
-            if 'edit' in adata.uns[k].columns:
-                adata.uns[k].edit = adata.uns[k].edit.map(str)
-            for c in [colname for colname in adata.uns[k].columns if "allele" in colname]:
-                adata.uns[k].loc[:,c] = adata.uns[k][c].map(str)
-        super(ReporterScreen, adata).write(out_path)
+    # def write(self, out_path):
+    #     """
+    #     Write .h5ad
+    #     """
+    #     adata = self.copy()
+    #     for k in adata.uns.keys():
+    #         if 'edit' in adata.uns[k].columns:
+    #             adata.uns[k].edit = adata.uns[k].edit.map(str)
+    #         for c in [colname for colname in adata.uns[k].columns if "allele" in colname]:
+    #             adata.uns[k].loc[:,c] = adata.uns[k][c].map(str)
+    #     super(ReporterScreen, adata).write(out_path)
 
 
 

@@ -269,17 +269,7 @@ class GuideEditCounter:
             guide_strand = 1
         ref_guide_seq = self.screen.guides.sequence[matched_guide_idx]
         read_guide_seq, read_guide_qual = self.get_guide_seq_qual(R1_record, len(ref_guide_seq))
-        guide_edit_allele = _get_edited_allele_crispresso(
-            ref_seq=ref_guide_seq,
-            query_seq=read_guide_seq,
-            aln_mat_path = self.output_dir + "/.aln_mat.txt",
-            offset=0,
-            strand=guide_strand,
-            start_pos=0,
-            end_pos=len(ref_guide_seq),
-            positionwise_quality = np.array(read_guide_qual),
-            quality_thres = single_base_qual_cutoff
-        )
+        guide_edit_allele = read_guide_seq
         return(guide_edit_allele)
         
 
@@ -313,15 +303,7 @@ class GuideEditCounter:
             offset = -(self.screen.guides["Target base position in reporter"][matched_guide_idx] -1)
             # TODO: clean this up
         
-        allele = _get_edited_allele_crispresso(
-            ref_seq=ref_reporter_seq,
-            query_seq=read_reporter_seq,
-            aln_mat_path = self.output_dir + "/.aln_mat.txt",
-            offset=offset,
-            strand=guide_strand,
-            positionwise_quality = np.array(read_reporter_qual),
-            quality_thres = single_base_qual_cutoff
-        )
+        allele= read_reporter_seq
 
         if allele.edits:
             if self.count_edited_alleles:

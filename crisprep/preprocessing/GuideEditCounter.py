@@ -304,7 +304,6 @@ class GuideEditCounter:
             # TODO: clean this up
         
         allele = read_reporter_seq
-        print(allele)
         if True:
             if self.count_edited_alleles:
                 if matched_guide_idx in self.guide_to_allele.keys():
